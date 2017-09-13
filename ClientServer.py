@@ -27,6 +27,7 @@ try:
     import cPickle as pickle
 except:
     import pickle
+from .Encrypt import encrypt, decrypt, random
 
 buffersize = 4096
 sockFamily = socket.AF_INET
@@ -50,6 +51,8 @@ class Client:
         self.running = False
         self.serveThread = None
         self.sock = None
+        self.key = None
+        self.IV = None
 
     def connect(self, addr):
         """Connect to a server."""
@@ -58,6 +61,9 @@ class Client:
             raise ClientServerError("already connected to server")
         self.sock = socket.socket(sockFamily, sockType)
         self.sock.connect((host, port))
+        keyIV = self.sock.recv(32)
+        self.key = keyIV[:16]
+        self.IV = keyIV[16:]
         self.running = True
         self.host = host
         self.port = port
@@ -70,6 +76,8 @@ class Client:
         self.running = False
         self.sock.close()
         self.sock = None
+        self.key = None
+        self.IV = None
 
     def serve(self):
         while True:
@@ -80,6 +88,8 @@ class Client:
                     self.disconnect()
                     return
                 packet += chunk
+            packet = packet[:int(len(packet) / 16) * 16]
+            packet = decrypt(packet, self.key, self.IV)
             packet = pickle.loads(packet)
             self.handler(packet)
 
@@ -96,6 +106,7 @@ class Client:
         if not self.running:
             raise ClientServerError("not connected to a server")
         packet = pickle.dumps(packet)
+        packet = encrypt(packet, self.key, self.IV)
         if len(packet) % buffersize == 0:
             packet += " "
         self.sock.send(packet)
@@ -149,25 +160,34 @@ class Server:
             conn, addr = self.sock.accept()
             if not self.running:
                 break
-            self.clients.append((conn, addr))
-            t = threading.Thread(target = self.handle, args = (conn, addr))
+            key = random()
+            IV = random()
+            conn.send(key + IV)
+            self.clients.append((conn, addr, key, IV))
+            t = threading.Thread(target = self.handle, args = (conn, addr, key, IV))
             t.daemon = True
             t.start()
 
-    def handle(self, conn, addr):
+    def handle(self, conn, addr, key, IV):
         while True:
             packet = ""
             while len(packet) % buffersize == 0:
                 chunk = conn.recv(buffersize)
                 if chunk == "":
-                    conn.close()
-                    for i in range(len(self.clients)):
-                        if conn is self.clients[i][0]:
-                            del self.clients[i]
+                    self.remove(conn)
                     return
                 packet += chunk
+            packet = packet[:int(len(packet) / 16) * 16]
+            packet = decrypt(packet, key, IV)
             packet = pickle.loads(packet)
             self.handler(packet, conn, addr)
+
+    def remove(self, conn):
+        """Remove a client."""
+        conn.close()
+        for i in range(len(self.clients)):
+            if conn is self.clients[i][0]:
+                del self.clients[i]
 
     def getAddr(self):
         """Get the address of the server in the format (host, port)."""
@@ -184,6 +204,10 @@ class Server:
         if conn not in [client[0] for client in self.clients]:
             raise ClientServerError("must be a valid, open client socket")
         packet = pickle.dumps(packet)
+        for i in range(len(self.clients)):
+            if conn is self.clients[i][0]:
+                packet = encrypt(packet, self.clients[i][2], self.clients[i][3])
+                break
         if len(packet) % buffersize == 0:
             packet += " "
         conn.send(packet)

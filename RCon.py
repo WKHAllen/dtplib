@@ -18,11 +18,12 @@ Example:
 
 import socket
 import threading
-from .UserDB import UserDB
 try:
     import cPickle as pickle
 except:
     import pickle
+from .Encrypt import encrypt, decrypt, random
+from .UserDB import UserDB
 
 buffersize = 4096
 sockFamily = socket.AF_INET
@@ -43,6 +44,8 @@ class Client:
         self.port = None
         self.running = False
         self.sock = None
+        self.key = None
+        self.IV = None
 
     def login(self, addr, username, password):
         """Log in to a server."""
@@ -51,11 +54,16 @@ class Client:
             raise RConError("already connected to server")
         self.sock = socket.socket(sockFamily, sockType)
         self.sock.connect((host, port))
+        keyIV = self.sock.recv(32)
+        self.key = keyIV[:16]
+        self.IV = keyIV[16:]
         self.running = True
         if not self.send((username, password)):
             self.running = False
             self.sock.close()
             self.sock = None
+            self.key = None
+            self.IV = None
             raise RConError("login failed")
         self.host = host
         self.port = port
@@ -65,6 +73,8 @@ class Client:
         self.running = False
         self.sock.close()
         self.sock = None
+        self.key = None
+        self.IV = None
 
     def getAddr(self):
         """Get the address of the client in the format (host, port)."""
@@ -79,6 +89,7 @@ class Client:
         if not self.running:
             raise RConError("not connected to a server")
         command = pickle.dumps(command)
+        command = encrypt(command, self.key, self.IV)
         if len(command) % buffersize == 0:
             command += " "
         self.sock.send(command)
@@ -89,6 +100,8 @@ class Client:
                 self.disconnect()
                 raise RConError("socket connection broken")
             result += chunk
+        result = result[:int(len(result) / 16) * 16]
+        result = decrypt(result, self.key, self.IV)
         result = pickle.loads(result)
         return result
 
@@ -141,45 +154,61 @@ class Server:
             conn, addr = self.sock.accept()
             if not self.running:
                 break
+            key = random()
+            IV = random()
+            conn.send(key + IV)
             login = ""
-            while len(login) % buffersize == 0:
-                chunk = conn.recv(buffersize)
-                if chunk == "":
-                    conn.close()
-                login += chunk
+            try:
+                while len(login) % buffersize == 0:
+                    chunk = conn.recv(buffersize)
+                    if chunk == "":
+                        conn.close()
+                        raise RConError
+                    login += chunk
+            except RConError:
+                continue
+            login = login[:int(len(login) / 16) * 16]
+            login = decrypt(login, key, IV)
             login = pickle.loads(login)
             isValid = self.users.validLogin(*login)
             valid = pickle.dumps(isValid)
+            valid = encrypt(valid, key, IV)
             if len(valid) % buffersize == 0:
                 valid += " "
             conn.send(valid)
             if isValid:
-                self.clients.append((conn, addr))
-                t = threading.Thread(target = self.handle, args = (conn, addr))
+                self.clients.append((conn, addr, key, IV))
+                t = threading.Thread(target = self.handle, args = (conn, addr, key, IV))
                 t.daemon = True
                 t.start()
             else:
-                conn.send(pickle.dumps(False))
                 conn.close()
 
-    def handle(self, conn, addr):
+    def handle(self, conn, addr, key, IV):
         while True:
             command = ""
             while len(command) % buffersize == 0:
                 chunk = conn.recv(buffersize)
                 if chunk == "":
-                    conn.close()
-                    for i in range(len(self.clients)):
-                        if conn is self.clients[i][0]:
-                            del self.clients[i]
+                    self.remove(conn)
                     return
                 command += chunk
+            command = command[:int(len(command) / 16) * 16]
+            command = decrypt(command, key, IV)
             command = pickle.loads(command)
             result = self.handler(command)
             result = pickle.dumps(result)
+            result = encrypt(result, key, IV)
             if len(result) % buffersize == 0:
                 result += " "
             conn.send(result)
+
+    def remove(self, conn):
+        """Remove a client."""
+        conn.close()
+        for i in range(len(self.clients)):
+            if conn is self.clients[i][0]:
+                del self.clients[i]
 
     def getAddr(self):
         """Get the address of the server in the format (host, port)."""

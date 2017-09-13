@@ -14,6 +14,7 @@ Example:
 
 import socket
 import threading
+from .Encrypt import encrypt, decrypt, random
 
 buffersize = 4096
 nullstr = " "
@@ -28,6 +29,10 @@ def getResponse(request, addr):
     (host, port) = addr
     s = socket.socket(sockFamily, sockType)
     s.connect((host, port))
+    keyIV = s.recv(32)
+    key = keyIV[:16]
+    IV = keyIV[16:]
+    request = encrypt(request, key, IV)
     s.send(str(len(request)))
     s.recv(len(nullstr))
     s.send(str(request))
@@ -45,6 +50,7 @@ def getResponse(request, addr):
             raise RequestHandlerError("socket connection broken")
         response += chunk
     s.close()
+    response = decrypt(response, key, IV)
     return response
 
 class RequestHandler:
@@ -94,36 +100,42 @@ class RequestHandler:
             conn, addr = self.sock.accept()
             if not self.running:
                 break
-            self.clients.append((conn, addr))
-            t = threading.Thread(target = self.handle, args = (conn, addr))
+            key = random()
+            IV = random()
+            conn.send(key + IV)
+            self.clients.append((conn, addr, key, IV))
+            t = threading.Thread(target = self.handle, args = (conn, addr, key, IV))
             t.daemon = True
             t.start()
 
-    def handle(self, conn, addr):
+    def handle(self, conn, addr, key, IV):
         request = ""
         length = conn.recv(buffersize)
         if length == "":
-            conn.close()
-            for i in range(len(self.clients)):
-                if conn is self.clients[i][0]:
-                    del self.clients[i]
+            self.remove(conn)
             return
         length = int(length)
         conn.send(nullstr)
         while len(request) < length:
             chunk = conn.recv(buffersize)
             if chunk == "":
-                conn.close()
-                for i in range(len(self.clients)):
-                    if conn is self.clients[i][0]:
-                        del self.clients[i]
+                self.remove(conn)
                 return
             request += chunk
+        request = decrypt(request, key, IV)
         result = self.handler(request)
+        result = encrypt(result, key, IV)
         conn.send(str(len(result)))
         conn.recv(len(nullstr))
         conn.send(str(result))
+        self.remove(conn)
+
+    def remove(self, conn):
+        """Remove a client."""
         conn.close()
+        for i in range(len(self.clients)):
+            if conn is self.clients[i][0]:
+                del self.clients[i]
 
     def getAddr(self):
         """Get the address of the server in the format (host, port)."""
