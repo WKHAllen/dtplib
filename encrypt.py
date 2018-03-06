@@ -32,15 +32,11 @@ Example:
 import base64
 import hashlib
 import rsa
-from rsa.bigfile import *
+from rsa.bigfile import encrypt_bigfile, decrypt_bigfile
 from cryptography.fernet import Fernet
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from StringIO import StringIO
+from io import BytesIO
 
 hashAlgorithm = "sha256"
-salt = "                "
 keysize = 512
 
 def hashText(text):
@@ -55,14 +51,8 @@ def newKey():
 
 def passwordToKey(password):
     """Convert a password into a useable encryption/decryption key."""
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100000,
-        backend=default_backend()
-    )
-    key = base64.urlsafe_b64encode(kdf.derive(password))
+    key = hashlib.new("sha256", password).digest()
+    key = base64.urlsafe_b64encode(key)
     return key
 
 def symmetricEncrypt(plaintext, key):
@@ -88,14 +78,14 @@ def newKeyPair():
 
 def encrypt(plaintext, pubKey):
     """Encrypt text with a public key."""
-    s = StringIO()
-    encrypt_bigfile(StringIO(plaintext), s, pubKey)
-    ciphertext = s.getvalue()
+    b = BytesIO()
+    encrypt_bigfile(BytesIO(plaintext), b, pubKey)
+    ciphertext = b.getvalue()
     return ciphertext
 
 def decrypt(ciphertext, privKey):
     """Decrypt text with a private key."""
-    s = StringIO()
-    decrypt_bigfile(StringIO(ciphertext), s, privKey)
-    plaintext = s.getvalue()
+    b = BytesIO()
+    decrypt_bigfile(BytesIO(ciphertext), b, privKey)
+    plaintext = b.getvalue()
     return plaintext

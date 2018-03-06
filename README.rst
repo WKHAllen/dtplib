@@ -1,7 +1,7 @@
 Data Transfer Protocol Library
 ==============================
 
-A socket-based module for creating basic network servers.
+Basic network server classes.
 
 Source: `github.com/WKHAllen/dtplib <https://github.com/WKHAllen/dtplib>`_
 

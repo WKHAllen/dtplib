@@ -8,9 +8,9 @@ Example:
     >>> addr = server.getAddr()
     >>> client = Client()
     >>> client.login(addr, "myusername", "password123")
-    >>> print client.send("Hello World!")
+    >>> print(client.send("Hello World!"))
     hELLO wORLD!
-    >>> print client.send("Foo Bar")
+    >>> print(client.send("Foo Bar"))
     fOO bAR
     >>> client.logout()
     >>> server.stop()
@@ -41,11 +41,10 @@ class Client:
     supports serialization.
     """
     def __init__(self):
-        self.sock = None
         self.host = None
         self.port = None
+        self.sock = socket.socket(sockFamily, sockType)
         self.running = False
-        self.sock = None
         self.pubKey = None
         self.privKey = None
 
@@ -54,22 +53,29 @@ class Client:
         (host, port) = addr
         if self.running:
             raise RConError("already connected to server")
-        self.sock = socket.socket(sockFamily, sockType)
         self.sock.connect((host, port))
         cPub, cPriv = newKeyPair()
-        sPub = ""
+        sPub = b""
         while len(sPub) % buffersize == 0:
-            chunk = self.sock.recv(buffersize)
+            try:
+                chunk = self.sock.recv(buffersize)
+            except:
+                self.logout()
+                raise RConError("socket connection broken")
             if not chunk:
-                self.disconnect()
+                self.logout()
                 raise RConError("socket connection broken")
             sPub += chunk
         sPub = pickle.loads(sPub)
-        cPub = pickle.dumps(cPub)
+        cPub = pickle.dumps(cPub, 0)
         if len(cPub) % buffersize == 0:
-            cPub += " "
+            cPub += b" "
         self.sock.send(cPub)
-        self.sock.recv(1)
+        try:
+            self.sock.recv(1)
+        except:
+            self.logout()
+            raise RConError("socket connection broken")
         self.pubKey = sPub
         self.privKey = cPriv
         self.running = True
@@ -83,9 +89,6 @@ class Client:
         """Log out of the server."""
         self.running = False
         self.sock.close()
-        self.sock = None
-        self.pubKey = None
-        self.privKey = None
 
     def getAddr(self):
         """Get the address of the client in the format (host, port)."""
@@ -99,20 +102,28 @@ class Client:
         """Send commands to the server and receive responses."""
         if not self.running:
             raise RConError("not connected to a server")
-        command = pickle.dumps(command)
+        command = pickle.dumps(command, 0)
         command = encrypt(command, self.pubKey)
         command = binascii.hexlify(command)
-        command += " "
+        command += b" "
         self.sock.send(command)
-        result = ""
+        result = b""
         while True:
-            chunk = self.sock.recv(buffersize)
+            try:
+                chunk = self.sock.recv(buffersize)
+            except:
+                if not self.running:
+                    return
+                self.logout()
+                raise RConError("socket connection broken")
             if not chunk:
-                self.disconnect()
+                if not self.running:
+                    return
+                self.logout()
                 raise RConError("socket connection broken")
             result += chunk
-            if " " in chunk:
-                result = result[:result.index(" ")]
+            if b" " in chunk:
+                result = result[:result.index(b" ")]
                 break
         result = binascii.unhexlify(result)
         result = decrypt(result, self.privKey)
@@ -127,26 +138,26 @@ class Server:
     Leave port = 0 for an arbitrary, unused port.
     'dbFileName' is the file in which the user database is stored.
     """
-    def __init__(self, handler, port=0, dbFileName="users.db"):
+    def __init__(self, handler, host=None, port=0, dbFileName="users.db"):
         self.handler = handler
-        self.sock = None
-        self.host = socket.gethostname()
+        self.host = host
+        if self.host is None:
+            self.host = socket.gethostname()
         self.port = port
+        self.sock = socket.socket(sockFamily, sockType)
         self.running = False
         self.serveThread = None
-        self.sock = None
         self.clients = []
         self.users = UserDB(dbFileName)
 
     def start(self):
         """Start the server."""
         if self.running:
-            raise RequestHandlerError("server already running")
-        self.sock = socket.socket(sockFamily, sockType)
+            raise RConError("server already running")
         self.sock.bind((self.host, self.port))
         self.sock.listen(5)
         self.running = True
-        self.serveThread = threading.Thread(target = self.serve)
+        self.serveThread = threading.Thread(target=self.serve)
         self.serveThread.daemon = True
         self.serveThread.start()
 
@@ -160,40 +171,50 @@ class Server:
         killsock.connect(self.getAddr())
         killsock.close()
         self.sock.close()
-        self.sock = None
 
     def serve(self):
         while True:
-            conn, addr = self.sock.accept()
+            try:
+                conn, addr = self.sock.accept()
+            except:
+                break
             if not self.running:
                 break
             sPub, sPriv = newKeyPair()
-            sPub = pickle.dumps(sPub)
+            sPub = pickle.dumps(sPub, 0)
             if len(sPub) % buffersize == 0:
-                sPub += " "
+                sPub += b" "
             conn.send(sPub)
-            cPub = ""
+            cPub = b""
             try:
                 while len(cPub) % buffersize == 0:
-                    chunk = conn.recv(buffersize)
+                    try:
+                        chunk = conn.recv(buffersize)
+                    except:
+                        conn.close()
+                        raise RConError("socket connection broken")
                     if not chunk:
-                        self.disconnect()
+                        conn.close()
                         raise RConError("socket connection broken")
                     cPub += chunk
             except RConError:
                 continue
             cPub = pickle.loads(cPub)
-            conn.send(" ")
-            login = ""
+            conn.send(b" ")
+            login = b""
             try:
                 while True:
-                    chunk = conn.recv(buffersize)
+                    try:
+                        chunk = conn.recv(buffersize)
+                    except:
+                        conn.close()
+                        raise RConError("socket connection broken")
                     if not chunk:
                         conn.close()
                         raise RConError("socket connection broken")
                     login += chunk
-                    if " " in chunk:
-                        login = login[:login.index(" ")]
+                    if b" " in chunk:
+                        login = login[:login.index(b" ")]
                         break
             except RConError:
                 continue
@@ -201,14 +222,14 @@ class Server:
             login = decrypt(login, sPriv)
             login = pickle.loads(login)
             isValid = self.users.validLogin(*login)
-            valid = pickle.dumps(isValid)
+            valid = pickle.dumps(isValid, 0)
             valid = encrypt(valid, cPub)
             valid = binascii.hexlify(valid)
-            valid += " "
+            valid += b" "
             conn.send(valid)
             if isValid:
                 self.clients.append((conn, addr, cPub, sPriv))
-                t = threading.Thread(target = self.handle, args = (conn, addr, cPub, sPriv))
+                t = threading.Thread(target=self.handle, args=(conn, addr, cPub, sPriv))
                 t.daemon = True
                 t.start()
             else:
@@ -216,24 +237,28 @@ class Server:
 
     def handle(self, conn, addr, pubKey, privKey):
         while True:
-            command = ""
+            command = b""
             while True:
-                chunk = conn.recv(buffersize)
+                try:
+                    chunk = conn.recv(buffersize)
+                except:
+                    self.remove(conn)
+                    return
                 if not chunk:
                     self.remove(conn)
                     return
                 command += chunk
-                if " " in chunk:
-                    command = command[:command.index(" ")]
+                if b" " in chunk:
+                    command = command[:command.index(b" ")]
                     break
             command = binascii.unhexlify(command)
             command = decrypt(command, privKey)
             command = pickle.loads(command)
             result = self.handler(command)
-            result = pickle.dumps(result)
+            result = pickle.dumps(result, 0)
             result = encrypt(result, pubKey)
             result = binascii.hexlify(result)
-            result += " "
+            result += b" "
             conn.send(result)
 
     def remove(self, conn):
@@ -274,4 +299,3 @@ class Server:
     def delDB(self):
         """Delete the database."""
         self.users.delete()
-        self.users = None

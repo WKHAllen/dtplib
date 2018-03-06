@@ -52,6 +52,7 @@ class UserDB:
         """Check if a username password combination is valid."""
         if username not in self.users:
             return False
+        password = password.encode()
         hashedPassword = hashText(password)
         return self.users[username][0] == hashedPassword
 
@@ -61,12 +62,13 @@ class UserDB:
         """
         if username in self.users:
             raise UserDBError("user already exists")
+        password = password.encode()
         hashedPassword = hashText(password)
         data = pickle.dumps(data)
         data = symmetricEncrypt(data, passwordToKey(password))
         self.users[username] = [hashedPassword, data]
-        open(self.filename, "w").close()
-        with open(self.filename, "w") as f:
+        open(self.filename, "wb").close()
+        with open(self.filename, "wb") as f:
             pickle.dump(self.users, f)
 
     def remove(self, username):
@@ -74,8 +76,8 @@ class UserDB:
         if username not in self.users:
             raise UserDBError("user does not exist")
         self.users.pop(username)
-        open(self.filename, "w").close()
-        with open(self.filename, "w") as f:
+        open(self.filename, "wb").close()
+        with open(self.filename, "wb") as f:
             pickle.dump(self.users, f)
 
     def getUsers(self):
@@ -100,8 +102,8 @@ class UserDB:
             raise UserDBError("invalid login")
         data = pickle.dumps(data)
         self.users[username][1] = symmetricEncrypt(data, passwordToKey(password))
-        open(self.filename, "w").close()
-        with open(self.filename, "w") as f:
+        open(self.filename, "wb").close()
+        with open(self.filename, "wb") as f:
             pickle.dump(self.users, f)
 
     def delete(self):

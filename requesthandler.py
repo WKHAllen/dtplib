@@ -34,34 +34,47 @@ def getResponse(request, addr):
     s = socket.socket(sockFamily, sockType)
     s.connect((host, port))
     cPub, cPriv = newKeyPair()
-    sPub = ""
+    sPub = b""
     while len(sPub) % buffersize == 0:
-        chunk = s.recv(buffersize)
+        try:
+            chunk = s.recv(buffersize)
+        except:
+            s.close()
+            raise RequestHandlerError("socket connection broken")
         if not chunk:
             s.close()
             raise RequestHandlerError("socket connection broken")
         sPub += chunk
     sPub = pickle.loads(sPub)
-    cPub = pickle.dumps(cPub)
+    cPub = pickle.dumps(cPub, 0)
     if len(cPub) % buffersize == 0:
-        cPub += " "
+        cPub += b" "
     s.send(cPub)
-    s.recv(1)
-    request = pickle.dumps(request)
+    try:
+        s.recv(1)
+    except:
+        s.close()
+        raise RequestHandlerError("socket connection broken")
+    request = pickle.dumps(request, 0)
     request = encrypt(request, sPub)
     request = binascii.hexlify(request)
-    request += " "
+    request += b" "
     s.send(request)
-    response = ""
+    response = b""
     while True:
-        chunk = s.recv(buffersize)
+        try:
+            chunk = s.recv(buffersize)
+        except:
+            s.close()
+            raise RequestHandlerError("socket connection broken")
         if not chunk:
             s.close()
             raise RequestHandlerError("socket connection broken")
         response += chunk
-        if " " in chunk:
-            response = response[:response.index(" ")]
+        if b" " in chunk:
+            response = response[:response.index(b" ")]
             break
+    s.close()
     response = binascii.unhexlify(response)
     response = decrypt(response, cPriv)
     response = pickle.loads(response)
@@ -76,24 +89,25 @@ class RequestHandler:
     Server.host can be changed to '', 'localhost', etc. before the
     start method is called.
     """
-    def __init__(self, handler, port = 0):
+    def __init__(self, handler, host=None, port=0):
         self.handler = handler
-        self.host = socket.gethostname()
+        self.host = host
+        if self.host is None:
+            self.host = socket.gethostname()
         self.port = port
+        self.sock = socket.socket(sockFamily, sockType)
         self.running = False
         self.serveThread = None
-        self.sock = None
         self.clients = []
 
     def start(self):
         """Start the server."""
         if self.running:
             raise RequestHandlerError("server already running")
-        self.sock = socket.socket(sockFamily, sockType)
         self.sock.bind((self.host, self.port))
         self.sock.listen(5)
         self.running = True
-        self.serveThread = threading.Thread(target = self.serve)
+        self.serveThread = threading.Thread(target=self.serve)
         self.serveThread.daemon = True
         self.serveThread.start()
 
@@ -107,22 +121,28 @@ class RequestHandler:
         killsock.connect(self.getAddr())
         killsock.close()
         self.sock.close()
-        self.sock = None
 
     def serve(self):
         while True:
-            conn, addr = self.sock.accept()
+            try:
+                conn, addr = self.sock.accept()
+            except:
+                break
             if not self.running:
                 break
             sPub, sPriv = newKeyPair()
-            sPub = pickle.dumps(sPub)
+            sPub = pickle.dumps(sPub, 0)
             if len(sPub) % buffersize == 0:
-                sPub += " "
+                sPub += b" "
             conn.send(sPub)
-            cPub = ""
+            cPub = b""
             try:
                 while len(cPub) % buffersize == 0:
-                    chunk = conn.recv(buffersize)
+                    try:
+                        chunk = conn.recv(buffersize)
+                    except:
+                        conn.close()
+                        raise RequestHandlerError("socket connection broken")
                     if not chunk:
                         conn.close()
                         raise RequestHandlerError("socket connection broken")
@@ -130,31 +150,35 @@ class RequestHandler:
             except RequestHandlerError:
                 continue
             cPub = pickle.loads(cPub)
-            conn.send(" ")
+            conn.send(b" ")
             self.clients.append((conn, addr, cPub, sPriv))
-            t = threading.Thread(target = self.handle, args = (conn, addr, cPub, sPriv))
+            t = threading.Thread(target=self.handle, args=(conn, addr, cPub, sPriv))
             t.daemon = True
             t.start()
 
     def handle(self, conn, addr, pubKey, privKey):
-        request = ""
+        request = b""
         while True:
-            chunk = conn.recv(buffersize)
+            try:
+                chunk = conn.recv(buffersize)
+            except:
+                self.remove(conn)
+                return
             if not chunk:
                 self.remove(conn)
                 return
             request += chunk
-            if " " in chunk:
-                request = request[:request.index(" ")]
+            if b" " in chunk:
+                request = request[:request.index(b" ")]
                 break
         request = binascii.unhexlify(request)
         request = decrypt(request, privKey)
         request = pickle.loads(request)
         response = self.handler(request)
-        response = pickle.dumps(response)
+        response = pickle.dumps(response, 0)
         response = encrypt(response, pubKey)
         response = binascii.hexlify(response)
-        response += " "
+        response += b" "
         conn.send(response)
         self.remove(conn)
 

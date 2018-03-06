@@ -3,10 +3,10 @@
 Example:
     >>> from dtplib.clientserver import Server, Client
     >>> def serverHandle(data, conn, addr):
-    ...     print data.swapcase()
+    ...     print(data.swapcase())
     ...
     >>> def clientHandle(data):
-    ...     print data[::-1]
+    ...     print(data[::-1])
     ...
     >>> server = Server(serverHandle)
     >>> server.start()
@@ -47,12 +47,11 @@ class Client:
     """
     def __init__(self, handler):
         self.handler = handler
-        self.sock = None
         self.host = None
         self.port = None
+        self.sock = socket.socket(sockFamily, sockType)
         self.running = False
         self.serveThread = None
-        self.sock = None
         self.pubKey = None
         self.privKey = None
 
@@ -61,28 +60,35 @@ class Client:
         (host, port) = addr
         if self.running:
             raise ClientServerError("already connected to server")
-        self.sock = socket.socket(sockFamily, sockType)
         self.sock.connect((host, port))
         cPub, cPriv = newKeyPair()
-        sPub = ""
+        sPub = b""
         while len(sPub) % buffersize == 0:
-            chunk = self.sock.recv(buffersize)
+            try:
+                chunk = self.sock.recv(buffersize)
+            except:
+                self.disconnect()
+                raise ClientServerError("socket connection broken")
             if not chunk:
                 self.disconnect()
                 raise ClientServerError("socket connection broken")
             sPub += chunk
         sPub = pickle.loads(sPub)
-        cPub = pickle.dumps(cPub)
+        cPub = pickle.dumps(cPub, 0)
         if len(cPub) % buffersize == 0:
-            cPub += " "
+            cPub += b" "
         self.sock.send(cPub)
-        self.sock.recv(1)
+        try:
+            self.sock.recv(1)
+        except:
+            self.disconnect()
+            raise ClientServerError("socket connection broken")
         self.pubKey = sPub
         self.privKey = cPriv
         self.running = True
         self.host = host
         self.port = port
-        self.serveThread = threading.Thread(target = self.handle)
+        self.serveThread = threading.Thread(target=self.handle)
         self.serveThread.daemon = True
         self.serveThread.start()
 
@@ -90,25 +96,30 @@ class Client:
         """Disconnect from the server."""
         self.running = False
         self.sock.close()
-        self.sock = None
-        self.pubKey = None
-        self.privKey = None
 
     def handle(self):
-        extra = ""
+        extra = b""
         while True:
-            packet = ""
+            packet = b""
             while True:
                 if extra:
                     chunk = extra
                 else:
-                    chunk = self.sock.recv(buffersize)
-                    if not chunk:
+                    try:
+                        chunk = self.sock.recv(buffersize)
+                    except:
+                        if not self.running:
+                            return
                         self.disconnect()
                         raise ClientServerError("socket connection broken")
-                if " " in chunk:
-                    extra = chunk[chunk.index(" ") + 1:]
-                    chunk = chunk[:chunk.index(" ")]
+                    if not chunk:
+                        if not self.running:
+                            return
+                        self.disconnect()
+                        raise ClientServerError("socket connection broken")
+                if b" " in chunk:
+                    extra = chunk[chunk.index(b" ") + 1:]
+                    chunk = chunk[:chunk.index(b" ")]
                     packet += chunk
                     break
                 packet += chunk
@@ -129,10 +140,10 @@ class Client:
         """Send data packets to the server."""
         if not self.running:
             raise ClientServerError("not connected to a server")
-        packet = pickle.dumps(packet)
+        packet = pickle.dumps(packet, 0)
         packet = encrypt(packet, self.pubKey)
         packet = binascii.hexlify(packet)
-        packet += " "
+        packet += b" "
         self.sock.send(packet)
 
 class Server:
@@ -146,14 +157,15 @@ class Server:
     Any Python object can be passed through the send method, as it
     supports serialization.
     """
-    def __init__(self, handler, port=0):
+    def __init__(self, handler, host=None, port=0):
         self.handler = handler
-        self.sock = None
-        self.host = socket.gethostname()
+        self.host = host
+        if self.host is None:
+            self.host = socket.gethostname()
         self.port = port
+        self.sock = socket.socket(sockFamily, sockType)
         self.running = False
         self.serveThread = None
-        self.sock = None
         self.clients = []
         self.pubKey = None
         self.privKey = None
@@ -162,11 +174,10 @@ class Server:
         """Start the server."""
         if self.running:
             raise ClientServerError("server already running")
-        self.sock = socket.socket(sockFamily, sockType)
         self.sock.bind((self.host, self.port))
         self.sock.listen(5)
         self.running = True
-        self.serveThread = threading.Thread(target = self.serve)
+        self.serveThread = threading.Thread(target=self.serve)
         self.serveThread.daemon = True
         self.serveThread.start()
 
@@ -180,24 +191,28 @@ class Server:
         killsock.connect(self.getAddr())
         killsock.close()
         self.sock.close()
-        self.sock = None
-        self.pubKey = None
-        self.privKey = None
 
     def serve(self):
         while True:
-            conn, addr = self.sock.accept()
+            try:
+                conn, addr = self.sock.accept()
+            except:
+                break
             if not self.running:
                 break
             sPub, sPriv = newKeyPair()
-            sPub = pickle.dumps(sPub)
+            sPub = pickle.dumps(sPub, 0)
             if len(sPub) % buffersize == 0:
-                sPub += " "
+                sPub += b" "
             conn.send(sPub)
-            cPub = ""
+            cPub = b""
             try:
                 while len(cPub) % buffersize == 0:
-                    chunk = conn.recv(buffersize)
+                    try:
+                        chunk = conn.recv(buffersize)
+                    except:
+                        conn.close()
+                        raise ClientServerError("socket connection broken")
                     if not chunk:
                         conn.close()
                         raise ClientServerError("socket connection broken")
@@ -205,27 +220,31 @@ class Server:
             except ClientServerError:
                 continue
             cPub = pickle.loads(cPub)
-            conn.send(" ")
+            conn.send(b" ")
             self.clients.append((conn, addr, cPub, sPriv))
-            t = threading.Thread(target = self.handle, args = (conn, addr, cPub, sPriv))
+            t = threading.Thread(target=self.handle, args=(conn, addr, cPub, sPriv))
             t.daemon = True
             t.start()
 
     def handle(self, conn, addr, pubKey, privKey):
-        extra = ""
+        extra = b""
         while True:
-            packet = ""
+            packet = b""
             while True:
                 if extra:
                     chunk = extra
                 else:
-                    chunk = conn.recv(buffersize)
+                    try:
+                        chunk = conn.recv(buffersize)
+                    except:
+                        self.remove(conn)
+                        return
                     if not chunk:
                         self.remove(conn)
                         return
-                if " " in chunk:
-                    extra = chunk[chunk.index(" ") + 1:]
-                    chunk = chunk[:chunk.index(" ")]
+                if b" " in chunk:
+                    extra = chunk[chunk.index(b" ") + 1:]
+                    chunk = chunk[:chunk.index(b" ")]
                     packet += chunk
                     break
                 packet += chunk
@@ -255,13 +274,13 @@ class Server:
         """
         if conn not in [client[0] for client in self.clients]:
             raise ClientServerError("must be a valid, open client socket")
-        packet = pickle.dumps(packet)
+        packet = pickle.dumps(packet, 0)
         for i in range(len(self.clients)):
             if conn is self.clients[i][0]:
                 packet = encrypt(packet, self.clients[i][2])
                 break
         packet = binascii.hexlify(packet)
-        packet += " "
+        packet += b" "
         conn.send(packet)
 
     def sendAll(self, packet):
