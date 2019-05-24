@@ -3,7 +3,6 @@ import select
 import threading
 import pickle
 import compressdir
-import bz2
 import errno
 import os
 import binascii
@@ -53,12 +52,20 @@ def _unpackMessage(data, messageType=TYPEOBJ, recvDir=None):
         return data
     elif messageType == TYPEFILE:
         # decrypt
+        os.makedirs(recvDir, exist_ok=True)
         path = compressdir.decompressed(data, newpath=recvDir)
         return path
 
 class Client:
     '''Client socket object.'''
     def __init__(self, onRecv=None, onDisconnected=None, blocking=False, eventBlocking=False, recvDir=None):
+        ''''onRecv' will be called when a packet is received.
+            onRecv takes the following parameters: data, datatype (0: object, 1: file).
+        'onDisconnected' will be called when the server disconnects suddenly.
+            onDisconnected takes no parameters.
+        If 'blocking' is True, the connect method will block until disconnecting.
+        If 'eventBlocking' is True, onRecv and onDisconnected will block when called.
+        'recvDir' is the directory in which files will be put in when received.'''
         self._onRecv = onRecv
         self._onDisconnected = onDisconnected
         self._blocking = blocking
@@ -89,12 +96,15 @@ class Client:
 
     def disconnect(self):
         '''Disconnect from the server.'''
-        if not self._connected:
-            raise RuntimeError("not connected to a server")
         self._connected = False
         self.sock.close()
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._host = None
         self._port = None
+    
+    def connected(self):
+        '''Whether or not the client is connected to a server.'''
+        return self._connected
 
     def getAddr(self):
         '''Get the address of the client.'''
@@ -128,6 +138,7 @@ class Client:
                     else:
                         self.disconnect()
                         self._callOnDisconnected()
+                        return
                 messageSize = _asciiToDec(size)
                 messageType = int(self.sock.recv(LENTYPE).decode("utf-8"))
                 message = self.sock.recv(messageSize)
@@ -140,7 +151,9 @@ class Client:
                 else:
                     raise e
             except IOError as e:
-                if e.errno != errno.EAGAIN and e.errno != errno.EWOULDBLOCK:
+                if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
+                    continue
+                else:
                     raise e
             else:
                 data = _unpackMessage(message, messageType=messageType, recvDir=self.recvDir)
@@ -165,6 +178,15 @@ class Client:
 class Server:
     '''Server socket object.'''
     def __init__(self, onRecv=None, onConnect=None, onDisconnect=None, blocking=False, eventBlocking=False, recvDir=None):
+        ''''onRecv' will be called when a packet is received.
+            onRecv takes the following parameters: client socket, data, datatype (0: object, 1: file).
+        'onConnect' will be called when a client connects.
+            onConnect takes the following parameters: client socket.
+        'onDisconnect' will be called when a client disconnects.
+            onDisconnect takes the following parameters: client socket.
+        If 'blocking' is True, the start method will block until stopping.
+        If 'eventBlocking' is True, onRecv, onConnect, and onDisconnect will block when called.
+        'recvDir' is the directory in which files will be put in when received.'''
         self._onRecv = onRecv
         self._onConnect = onConnect
         self._onDisconnect = onDisconnect
@@ -203,16 +225,16 @@ class Server:
     
     def stop(self):
         '''Stop the server.'''
-        if not self._serving:
-            raise RuntimeError("not currently serving")
         self._serving = False
         for sock in self.socks:
-            if sock != self.sock:
-                sock.close()
-        self.socks = []
-        self.sock.close()
+            sock.close()
+        self.socks = [self.sock]
         self._host = None
         self._port = None
+
+    def serving(self):
+        '''Whether or not the server is serving.'''
+        return self._serving
 
     def getAddr(self):
         '''Get the address of the server.'''
@@ -275,7 +297,10 @@ class Server:
                     try:
                         size = notifiedSock.recv(LENSIZE)
                         if len(size) == 0:
-                            self.socks.remove(notifiedSock)
+                            try:
+                                self.removeClient(notifiedSock)
+                            except ValueError:
+                                pass
                             self._callOnDisconnect(notifiedSock)
                             continue
                         messageSize = _asciiToDec(size)
@@ -285,7 +310,10 @@ class Server:
                         if e.errno == errno.ECONNRESET or e.errno == errno.ENOTSOCK:
                             if not self._serving:
                                 return
-                            self.socks.remove(notifiedSock)
+                            try:
+                                self.removeClient(notifiedSock)
+                            except ValueError:
+                                pass
                             self._callOnDisconnect(notifiedSock)
                             continue
                         else:
@@ -294,7 +322,10 @@ class Server:
                         data = _unpackMessage(message, messageType=messageType, recvDir=self.recvDir)
                         self._callOnRecv(notifiedSock, data, messageType)
             for notifiedSock in exceptionSocks:
-                self.socks.remove(notifiedSock)
+                try:
+                    self.removeClient(notifiedSock)
+                except ValueError:
+                    pass
                 self._callOnDisconnect(notifiedSock)
 
     def _callOnRecv(self, conn, data, messageType):

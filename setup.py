@@ -1,10 +1,9 @@
-import os
 from setuptools import setup
 
 setup(
     name = 'dtplib',
     packages = ['dtplib'],
-    version = '1.0.0',
+    version = '1.0.1',
     license = 'MIT',
     description = 'Data Transfer Protocol Library - Network server classes',
     long_description = ''.join(open('README.md', encoding='utf-8').readlines()),
