@@ -131,6 +131,7 @@ class Client:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._host = None
         self._port = None
+        self._key = None
     
     def connected(self):
         '''Whether or not the client is connected to a server.'''
@@ -274,6 +275,7 @@ class Server:
         self.socks = [self.sock]
         self._host = None
         self._port = None
+        self._keys = {}
 
     def serving(self):
         '''Whether or not the server is serving.'''
