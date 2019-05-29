@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name = 'dtplib',
     packages = ['dtplib'],
-    version = '1.0.1',
+    version = '1.1.0',
     license = 'MIT',
     description = 'Data Transfer Protocol Library - Network server classes',
     long_description = ''.join(open('README.md', encoding='utf-8').readlines()),
@@ -12,7 +12,7 @@ setup(
     author_email = 'wkhallen@gmail.com',
     url = 'https://github.com/WKHAllen/dtplib',
     keywords = ['sockets', 'networking', 'server', 'client'],
-    install_requires = ['compressdir'],
+    install_requires = ['compressdir', 'cryptography', 'rsa'],
     classifiers = [
         'Intended Audience :: Developers',
         'Topic :: Internet',

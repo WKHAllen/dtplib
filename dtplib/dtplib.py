@@ -3,6 +3,8 @@ import select
 import threading
 import pickle
 import compressdir
+from cryptography.fernet import Fernet
+import rsa
 import errno
 import os
 import binascii
@@ -29,13 +31,13 @@ def _asciiToDec(ascii):
     dec = int(hexstr, base=16)
     return dec
 
-def _buildMessage(data, messageType=TYPEOBJ):
+def _buildMessage(data, messageType=TYPEOBJ, key=None):
     if messageType == TYPEOBJ:
         data = pickle.dumps(data)
-        # encrypt
     elif messageType == TYPEFILE:
         data = compressdir.compressed(data)
-        # encrypt
+    if key is not None:
+        data = _encrypt(key, data)
     if len(data) > MAXSIZE:
         raise RuntimeError("maximum data packet size exceeded")
     size = _decToAscii(len(data))
@@ -43,18 +45,44 @@ def _buildMessage(data, messageType=TYPEOBJ):
     type = str(messageType).encode("utf-8")
     return size + type + data
 
-def _unpackMessage(data, messageType=TYPEOBJ, recvDir=None):
+def _unpackMessage(data, messageType=TYPEOBJ, key=None, recvDir=None):
     if recvDir is None:
         recvDir = os.getcwd()
+    if key is not None:
+        data = _decrypt(key, data)
     if messageType == TYPEOBJ:
-        # decrypt
         data = pickle.loads(data)
         return data
     elif messageType == TYPEFILE:
-        # decrypt
         os.makedirs(recvDir, exist_ok=True)
         path = compressdir.decompressed(data, newpath=recvDir)
         return path
+
+def _newKeys(size=512):
+    pubkey, privkey = rsa.newkeys(size)
+    return pubkey, privkey
+
+def _asymmetricEncrypt(pubkey, plaintext):
+    ciphertext = rsa.encrypt(plaintext, pubkey)
+    return ciphertext
+
+def _asymmetricDecrypt(privkey, ciphertext):
+    plaintext = rsa.decrypt(ciphertext, privkey)
+    return plaintext
+
+def _newKey():
+    key = Fernet.generate_key()
+    return key
+
+def _encrypt(key, data):
+    f = Fernet(key)
+    token = f.encrypt(data)
+    return token
+
+def _decrypt(key, token):
+    f = Fernet(key)
+    data = f.decrypt(token)
+    return data
 
 class Client:
     '''Client socket object.'''
@@ -77,6 +105,7 @@ class Client:
         self._connected = False
         self._host = None
         self._port = None
+        self._key = None
         self._serveThread = None
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     
@@ -88,6 +117,7 @@ class Client:
         self._connected = True
         self._host = host
         self._port = port
+        self._doKeyExchange()
         if not self._blocking:
             self._serveThread = threading.Thread(target=self._handle)
             self._serveThread.start()
@@ -118,15 +148,27 @@ class Client:
         '''Send data to the server.'''
         if not self._connected:
             raise RuntimeError("not connected to a server")
-        message = _buildMessage(data)
+        message = _buildMessage(data, key=self._key)
         self.sock.send(message)
 
     def sendFile(self, path):
         '''Send a file or directory to the server.'''
         if not self._connected:
             raise RuntimeError("not connected to a server")
-        message = _buildMessage(path, messageType=TYPEFILE)
+        message = _buildMessage(path, messageType=TYPEFILE, key=self._key)
         self.sock.send(message)
+
+    def _doKeyExchange(self):
+        pubkey, privkey = _newKeys()
+        pickled = pickle.dumps(pubkey)
+        size = _decToAscii(len(pickled))
+        size = b"\x00" * (LENSIZE - len(size)) + size
+        self.sock.send(size + pickled)
+        size = self.sock.recv(LENSIZE)
+        messageSize = _asciiToDec(size)
+        message = self.sock.recv(messageSize)
+        key = _asymmetricDecrypt(privkey, message)
+        self._key = key
 
     def _handle(self):
         while self._connected:
@@ -156,7 +198,7 @@ class Client:
                 else:
                     raise e
             else:
-                data = _unpackMessage(message, messageType=messageType, recvDir=self.recvDir)
+                data = _unpackMessage(message, messageType=messageType, key=self._key, recvDir=self.recvDir)
                 self._callOnRecv(data, messageType)
 
     def _callOnRecv(self, data, messageType):
@@ -199,6 +241,7 @@ class Server:
         self._serving = False
         self._host = None
         self._port = None
+        self._keys = {}
         self._serveThread = None
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -254,30 +297,45 @@ class Server:
         '''Remove a client.'''
         conn.close()
         self.socks.remove(conn)
+        self._keys.pop(conn)
 
     def send(self, data, conn=None):
         '''Send data to a client. If conn is None, data is sent to all clients.'''
         if not self._serving:
             raise RuntimeError("not currently serving")
-        message = _buildMessage(data)
         if conn is not None:
+            message = _buildMessage(data, key=self._keys[conn])
             conn.send(message)
         else:
             for conn in self.socks:
                 if conn != self.sock:
+                    message = _buildMessage(data, key=self._keys[conn])
                     conn.send(message)
 
     def sendFile(self, path, conn=None):
         '''Send a file or directory to a client. If conn is None, data is sent to all clients.'''
         if not self._serving:
             raise RuntimeError("not currently serving")
-        message = _buildMessage(path, messageType=TYPEFILE)
         if conn is not None:
+            message = _buildMessage(path, messageType=TYPEFILE, key=self._keys[conn])
             conn.send(message)
         else:
             for conn in self.socks:
                 if conn != self.sock:
+                    message = _buildMessage(path, messageType=TYPEFILE, key=self._keys[conn])
                     conn.send(message)
+
+    def _doKeyExchange(self, conn):
+        size = conn.recv(LENSIZE)
+        messageSize = _asciiToDec(size)
+        message = conn.recv(messageSize)
+        pubkey = pickle.loads(message)
+        key = _newKey()
+        encryptedKey = _asymmetricEncrypt(pubkey, key)
+        size = _decToAscii(len(encryptedKey))
+        size = b"\x00" * (LENSIZE - len(size)) + size
+        conn.send(size + encryptedKey)
+        self._keys[conn] = key
 
     def _serve(self):
         while self._serving:
@@ -291,6 +349,7 @@ class Server:
                             return
                         else:
                             raise e
+                    self._doKeyExchange(conn)
                     self.socks.append(conn)
                     self._callOnConnect(conn)
                 else:
@@ -319,7 +378,7 @@ class Server:
                         else:
                             raise e
                     else:
-                        data = _unpackMessage(message, messageType=messageType, recvDir=self.recvDir)
+                        data = _unpackMessage(message, messageType=messageType, key=self._keys[notifiedSock], recvDir=self.recvDir)
                         self._callOnRecv(notifiedSock, data, messageType)
             for notifiedSock in exceptionSocks:
                 try:
