@@ -120,6 +120,7 @@ class Client:
         self._doKeyExchange()
         if not self._blocking:
             self._serveThread = threading.Thread(target=self._handle)
+            self._serveThread.daemon = True
             self._serveThread.start()
         else:
             self._handle()
@@ -206,6 +207,7 @@ class Client:
         if self._onRecv is not None:
             if not self._eventBlocking:
                 t = threading.Thread(target=self._onRecv, args=(data, messageType))
+                t.daemon = True
                 t.start()
             else:
                 self._onRecv(data, messageType)
@@ -214,6 +216,7 @@ class Client:
         if self._onDisconnected is not None:
             if not self._eventBlocking:
                 t = threading.Thread(target=self._onDisconnected)
+                t.daemon = True
                 t.start()
             else:
                 self._onDisconnected()
@@ -263,6 +266,7 @@ class Server:
         self._port = port
         if not self._blocking:
             self._serveThread = threading.Thread(target=self._serve)
+            self._serveThread.daemon = True
             self._serveThread.start()
         else:
             self._serve()
@@ -393,6 +397,7 @@ class Server:
         if self._onRecv is not None:
             if not self._eventBlocking:
                 t = threading.Thread(target=self._onRecv, args=(conn, data, messageType))
+                t.daemon = True
                 t.start()
             else:
                 self._onRecv(conn, data, messageType)
@@ -401,6 +406,7 @@ class Server:
         if self._onConnect is not None:
             if not self._eventBlocking:
                 t = threading.Thread(target=self._onConnect, args=(conn,))
+                t.daemon = True
                 t.start()
             else:
                 self._onConnect(conn)
@@ -409,6 +415,7 @@ class Server:
         if self._onDisconnect is not None:
             if not self._eventBlocking:
                 t = threading.Thread(target=self._onDisconnect, args=(conn,))
+                t.daemon = True
                 t.start()
             else:
                 self._onDisconnect(conn)
