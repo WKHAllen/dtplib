@@ -186,10 +186,15 @@ class Client:
                 messageSize = _asciiToDec(size)
                 messageType = int(self.sock.recv(LENTYPE).decode("utf-8"))
                 message = self.sock.recv(messageSize)
+            except ConnectionResetError:
+                self.disconnect()
+                self._callOnDisconnected()
+                return
             except OSError as e:
                 if e.errno == errno.ENOTSOCK:
                     self.disconnect()
                     self._callOnDisconnected()
+                    return
                 elif e.errno == errno.ECONNABORTED and not self._connected:
                     return
                 else:
