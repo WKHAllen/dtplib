@@ -296,7 +296,7 @@ class Server:
 
     def getClientAddr(self, conn):
         '''Get the address of a client.'''
-        return conn.getsockname()
+        return conn.getpeername()
 
     def getClients(self):
         '''Get the list of clients.'''
