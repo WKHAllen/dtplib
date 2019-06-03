@@ -350,7 +350,10 @@ class Server:
 
     def _serve(self):
         while self._serving:
-            readSocks, _, exceptionSocks = select.select(self.socks, [], self.socks)
+            try:
+                readSocks, _, exceptionSocks = select.select(self.socks, [], self.socks)
+            except ValueError: # happens when a client is removed
+                continue
             for notifiedSock in readSocks:
                 if notifiedSock == self.sock:
                     try:
