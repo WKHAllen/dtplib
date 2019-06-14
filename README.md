@@ -12,4 +12,6 @@ Source: [https://github.com/WKHAllen/dtplib](https://github.com/WKHAllen/dtplib)
 
 ### Installation
 
-`pip install dtplib`
+```console
+$ pip install dtplib
+```
