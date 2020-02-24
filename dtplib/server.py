@@ -72,6 +72,7 @@ class Server:
         self._host = None
         self._port = None
         self._keys = {}
+        self._serveThread.join()
 
     def serving(self):
         '''Whether or not the server is serving.'''

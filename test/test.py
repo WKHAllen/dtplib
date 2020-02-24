@@ -5,6 +5,8 @@ from dtplib import Client, Server, client, server
 import time
 
 def main():
+    waitTime = 0.1
+
     serverResult = []
     clientResult = []
 
@@ -17,14 +19,18 @@ def main():
     s = Server(serverRecv, jsonEncode=True)
     s.start()
     print(s.getAddr())
+    time.sleep(waitTime)
     c = Client(clientRecv, jsonEncode=True)
     c.connect(*s.getAddr())
+    time.sleep(waitTime)
     c.send("Hello, world!")
     s.send("foo bar")
-    time.sleep(0.1)
+    time.sleep(waitTime)
     c.disconnect()
+    time.sleep(waitTime)
     s.stop()
-    
+    time.sleep(waitTime)
+
     assert serverResult == ["Hello, world!"]
     assert clientResult == ["foo bar"]
 
@@ -35,10 +41,11 @@ def main():
         with client(*s.getAddr(), onRecv=clientRecv, recvDir="clientRecv") as c:
             c.sendFile("files")
             s.sendFile("files/test.txt")
-            time.sleep(0.1)
-    
+            time.sleep(waitTime)
+
     assert serverResult == ["files"]
     assert clientResult == ["test.txt"]
+    time.sleep(waitTime)
 
     connect = []
     disconnect = []
@@ -49,23 +56,28 @@ def main():
 
     def onDisconnect(conn):
         disconnect.append(conn)
-    
+
     def onDisconnected():
         disconnected.append(True)
 
     s = Server(onConnect=onConnect, onDisconnect=onDisconnect)
     s.start()
-    c = Client(onDisconnected=onDisconnected)
-    c.connect(*s.getAddr())
-    time.sleep(0.1)
+    time.sleep(waitTime)
+
+    c1 = Client(onDisconnected=onDisconnected)
+    c1.connect(*s.getAddr())
+    time.sleep(waitTime)
     client1 = s.getClients()[0]
-    c.disconnect()
-    time.sleep(0.1)
-    c.connect(*s.getAddr())
-    time.sleep(0.1)
+    time.sleep(waitTime)
+    c1.disconnect()
+    time.sleep(waitTime)
+
+    c2 = Client(onDisconnected=onDisconnected)
+    c2.connect(*s.getAddr())
+    time.sleep(waitTime)
     client2 = s.getClients()[0]
     s.stop()
-    time.sleep(0.1)
+    time.sleep(waitTime)
 
     assert connect == [client1, client2]
     assert disconnect == [client1]
