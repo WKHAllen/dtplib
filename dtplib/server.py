@@ -4,6 +4,7 @@ import threading
 import pickle
 import errno
 import os
+import time
 import copy
 from contextlib import contextmanager
 from .util import LENSIZE, LENTYPE, TYPEOBJ, TYPEFILE, _decToAscii, _asciiToDec, _buildMessage, _unpackMessage, _newKey, _asymmetricEncrypt
@@ -66,8 +67,14 @@ class Server:
     def stop(self):
         '''Stop the server.'''
         self._serving = False
+        clientSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        clientSock.connect(self.sock.getsockname())
+        time.sleep(0.01)
+        clientSock.close()
         for sock in self.socks:
-            sock.close()
+            if sock != self.sock:
+                sock.close()
+        self.sock.close()
         self.socks = [self.sock]
         self._host = None
         self._port = None
@@ -141,6 +148,8 @@ class Server:
                 readSocks, _, exceptionSocks = select.select(self.socks, [], self.socks)
             except ValueError: # happens when a client is removed
                 continue
+            if not self._serving:
+                return
             for notifiedSock in readSocks:
                 if notifiedSock == self.sock:
                     try:

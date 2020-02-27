@@ -14,6 +14,9 @@ TYPEFILE = 1
 
 MAXSIZE = 256 ** LENSIZE - 1
 
+LOCALSERVERHOST = "127.0.0.1"
+LOCALSERVERPORT = 0
+
 def _decToAscii(dec):
     hexstr = hex(dec)[2:]
     if len(hexstr) % 2 == 1:

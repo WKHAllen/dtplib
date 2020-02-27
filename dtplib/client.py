@@ -1,10 +1,13 @@
 import socket
+import select
 import threading
 import pickle
 import errno
 import os
+import time
 from contextlib import contextmanager
-from .util import LENSIZE, LENTYPE, TYPEOBJ, TYPEFILE, _decToAscii, _asciiToDec, _buildMessage, _unpackMessage, _newKeys, _asymmetricDecrypt
+from .util import LENSIZE, LENTYPE, TYPEOBJ, TYPEFILE, LOCALSERVERHOST, LOCALSERVERPORT, _decToAscii, _asciiToDec, _buildMessage, _unpackMessage, _newKeys, _asymmetricDecrypt
+from .server import Server
 
 class Client:
     '''Client socket object.'''
@@ -55,6 +58,10 @@ class Client:
     def disconnect(self):
         '''Disconnect from the server.'''
         self._connected = False
+        localClientSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        localClientSock.connect(self.localServer.getsockname())
+        time.sleep(0.01)
+        localClientSock.close()
         self.sock.close()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._host = None
@@ -100,7 +107,14 @@ class Client:
         self._key = key
 
     def _handle(self):
+        self.localServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.localServer.bind((LOCALSERVERHOST, LOCALSERVERPORT))
+        self.localServer.listen()
         while self._connected:
+            select.select([self.sock, self.localServer], [], [self.sock, self.localServer])
+            if not self._connected:
+                self.localServer.close()
+                return
             try:
                 size = self.sock.recv(LENSIZE)
                 if len(size) == 0:
