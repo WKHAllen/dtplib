@@ -106,7 +106,8 @@ Send a file or directory to a client. `path` is the path to the file or director
 The dtplib server object can be used in a with statement.
 
 ```py
-s = server(host, port, *args, **kwargs)
+with server(host, port, *args, **kwargs) as s:
+    pass
 ```
 
 `host` is the server IP address. `port` is the port number. `args` and `kwargs` will be passed to the Server class constructor.
@@ -180,7 +181,8 @@ Send a file or directory to the server, providing the path to the file or direct
 The dtplib client object can be used in a with statement.
 
 ```py
-c = client(host, port, *args, **kwargs)
+with client(host, port, *args, **kwargs) as c:
+    pass
 ```
 
 `host` is the server IP address. `port` is the port number. `args` and `kwargs` will be passed to the Client class constructor.
