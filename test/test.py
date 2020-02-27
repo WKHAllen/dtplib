@@ -23,8 +23,9 @@ def main():
     s.send("foo bar")
     time.sleep(0.1)
     c.disconnect()
+    time.sleep(0.1)
     s.stop()
-    
+
     assert serverResult == ["Hello, world!"]
     assert clientResult == ["foo bar"]
 
@@ -36,7 +37,7 @@ def main():
             c.sendFile("files")
             s.sendFile("files/test.txt")
             time.sleep(0.1)
-    
+
     assert serverResult == ["files"]
     assert clientResult == ["test.txt"]
 
@@ -49,7 +50,7 @@ def main():
 
     def onDisconnect(conn):
         disconnect.append(conn)
-    
+
     def onDisconnected():
         disconnected.append(True)
 
