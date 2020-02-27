@@ -67,10 +67,13 @@ class Server:
     def stop(self):
         '''Stop the server.'''
         self._serving = False
-        clientSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        clientSock.connect(self.sock.getsockname())
+        localClientSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            localClientSock.connect(self.sock.getsockname())
+        except ConnectionResetError:
+            pass # Connection reset by peer
         time.sleep(0.01)
-        clientSock.close()
+        localClientSock.close()
         for sock in self.socks:
             if sock != self.sock:
                 sock.close()

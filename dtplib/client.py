@@ -59,7 +59,10 @@ class Client:
         '''Disconnect from the server.'''
         self._connected = False
         localClientSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        localClientSock.connect(self.localServer.getsockname())
+        try:
+            localClientSock.connect(self.localServer.getsockname())
+        except ConnectionResetError:
+            pass # Connection reset by peer
         time.sleep(0.01)
         localClientSock.close()
         self.sock.close()
