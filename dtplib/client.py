@@ -35,9 +35,9 @@ class Client:
         self._host = None
         self._port = None
         self._key = None
-        self._serveThread = None
+        self._handleThread = None
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
+
     def connect(self, host, port):
         '''Connect to a server.'''
         if self._connected:
@@ -48,10 +48,10 @@ class Client:
         self._port = port
         self._doKeyExchange()
         if not self._blocking:
-            self._serveThread = threading.Thread(target=self._handle)
+            self._handleThread = threading.Thread(target=self._handle)
             if self._daemon:
-                self._serveThread.daemon = True
-            self._serveThread.start()
+                self._handleThread.daemon = True
+            self._handleThread.start()
         else:
             self._handle()
 
@@ -67,6 +67,7 @@ class Client:
         self._host = None
         self._port = None
         self._key = None
+        self._handleThread.join()
     
     def connected(self):
         '''Whether or not the client is connected to a server.'''
