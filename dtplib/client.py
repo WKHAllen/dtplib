@@ -67,7 +67,10 @@ class Client:
         self._host = None
         self._port = None
         self._key = None
-        self._handleThread.join()
+        if self._handleThread is not None:
+            if self._handleThread is not threading.current_thread():
+                self._handleThread.join()
+            self._handleThread = None
     
     def connected(self):
         '''Whether or not the client is connected to a server.'''

@@ -7,6 +7,8 @@ import time
 def main():
     waitTime = 0.1
 
+    thisDir = os.path.split(os.path.abspath(__file__))[0]
+
     serverResult = []
     clientResult = []
 
@@ -37,10 +39,10 @@ def main():
     serverResult = []
     clientResult = []
 
-    with server(None, None, onRecv=serverRecv, recvDir="serverRecv") as s:
-        with client(*s.getAddr(), onRecv=clientRecv, recvDir="clientRecv") as c:
-            c.sendFile("files")
-            s.sendFile("files/test.txt")
+    with server(None, None, onRecv=serverRecv, recvDir=f"{thisDir}/serverRecv") as s:
+        with client(*s.getAddr(), onRecv=clientRecv, recvDir=f"{thisDir}/clientRecv") as c:
+            c.sendFile(f"{thisDir}/files")
+            s.sendFile(f"{thisDir}/files/test.txt")
             time.sleep(waitTime)
 
     assert serverResult == ["files"]

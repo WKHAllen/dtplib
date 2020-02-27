@@ -79,7 +79,10 @@ class Server:
         self._host = None
         self._port = None
         self._keys = {}
-        self._serveThread.join()
+        if self._serveThread is not None:
+            if self._serveThread is not threading.current_thread():
+                self._serveThread.join()
+            self._serveThread = None
 
     def serving(self):
         '''Whether or not the server is serving.'''
