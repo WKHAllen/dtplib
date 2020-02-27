@@ -3,15 +3,15 @@ from setuptools import setup
 setup(
     name = 'dtplib',
     packages = ['dtplib'],
-    version = '1.1.6',
+    version = '1.2.0',
     license = 'MIT',
-    description = 'Data Transfer Protocol Library - Network server classes',
+    description = 'A cross platform networking library written in Python',
     long_description = ''.join(open('README.md', encoding='utf-8').readlines()),
     long_description_content_type = 'text/markdown',
     author = 'Will Allen',
     author_email = 'wkhallen@gmail.com',
     url = 'https://github.com/WKHAllen/dtplib',
-    keywords = ['sockets', 'networking', 'server', 'client'],
+    keywords = ['networking', 'websocket', 'socket', 'server', 'client'],
     install_requires = ['compressdir', 'cryptography', 'rsa'],
     classifiers = [
         'Intended Audience :: Developers',
@@ -23,5 +23,6 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
     ],
 )
