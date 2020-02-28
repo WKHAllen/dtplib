@@ -11,7 +11,7 @@ from .util import LENSIZE, LENTYPE, TYPEOBJ, TYPEFILE, _decToAscii, _asciiToDec,
 
 class Server:
     '''Server socket object.'''
-    def __init__(self, onRecv=None, onConnect=None, onDisconnect=None, blocking=False, eventBlocking=False, recvDir=None, daemon=True, jsonEncode=False):
+    def __init__(self, onRecv=None, onConnect=None, onDisconnect=None, blocking=False, eventBlocking=False, recvDir=None, daemon=True, jsonEncode=False, ignoreErrors=False):
         ''''onRecv' will be called when a packet is received.
             onRecv takes the following parameters: client socket, data, datatype (0: object, 1: file).
         'onConnect' will be called when a client connects.
@@ -22,7 +22,8 @@ class Server:
         If 'eventBlocking' is True, onRecv, onConnect, and onDisconnect will block when called.
         'recvDir' is the directory in which files will be put in when received.
         If 'daemon' is True, all threads spawned will be daemon threads.
-        If 'jsonEncode' is True, packets will be encoded using json instad of pickle.'''
+        If 'jsonEncode' is True, packets will be encoded using json instad of pickle.
+        If 'ignoreErrors' is True, all errors will be ignored.'''
         self._onRecv = onRecv
         self._onConnect = onConnect
         self._onDisconnect = onDisconnect
@@ -34,6 +35,7 @@ class Server:
             self.recvDir = os.getcwd()
         self._daemon = daemon
         self._jsonEncode = jsonEncode
+        self._ignoreErrors = ignoreErrors
         self._serving = False
         self._host = None
         self._port = None
@@ -166,9 +168,18 @@ class Server:
                             return
                         else:
                             raise e
-                    self._doKeyExchange(conn)
-                    self.socks.append(conn)
-                    self._callOnConnect(conn)
+                    if not self._ignoreErrors:
+                        self._doKeyExchange(conn)
+                        self.socks.append(conn)
+                        self._callOnConnect(conn)
+                    else:
+                        try:
+                            self._doKeyExchange(conn)
+                        except: # likely a different protocol
+                            pass # in which case, do nothing
+                        else:
+                            self.socks.append(conn)
+                            self._callOnConnect(conn)
                 else:
                     try:
                         size = notifiedSock.recv(LENSIZE)

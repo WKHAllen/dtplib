@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name = 'dtplib',
     packages = ['dtplib'],
-    version = '1.2.0',
+    version = '1.2.1',
     license = 'MIT',
     description = 'A cross platform networking library written in Python',
     long_description = ''.join(open('README.md', encoding='utf-8').readlines()),
