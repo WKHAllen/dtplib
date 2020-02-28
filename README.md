@@ -21,7 +21,7 @@ $ pip install dtplib
 ### Creating a server
 
 ```py
-s = Server(onRecv=None, onConnect=None, onDisconnect=None, blocking=False, eventBlocking=False, recvDir=None, daemon=True, jsonEncode=False)
+s = Server(onRecv=None, onConnect=None, onDisconnect=None, blocking=False, eventBlocking=False, recvDir=None, daemon=True, jsonEncode=False, ignoreErrors=False)
 ```
 
 Create a server object.
@@ -34,6 +34,7 @@ If `eventBlocking` is True, `onRecv`, `onConnect`, and `onDisconnect` will block
 `recvDir` is the directory in which files will be put in when received.
 If `daemon` is True, all threads spawned will be daemon threads.
 If `jsonEncode` is True, packets will be encoded using json instad of pickle.
+If `ignoreErrors` is True, all errors will be ignored.
 
 ### Starting the server
 
