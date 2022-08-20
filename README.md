@@ -4,11 +4,13 @@ dtplib is a cross platform networking library written in Python.
 
 Source: [https://github.com/WKHAllen/dtplib](https://github.com/WKHAllen/dtplib)
 
+**NOTE:** This project has been archived. Its successor is [dtppy](https://github.com/WKHAllen/dtppy).
+
 ## Dependencies
 
-* [compressdir](https://github.com/WKHAllen/compressdir)
-* [cryptography](https://github.com/pyca/cryptography)
-* [rsa](https://github.com/sybrenstuvel/python-rsa/)
+- [compressdir](https://github.com/WKHAllen/compressdir)
+- [cryptography](https://github.com/pyca/cryptography)
+- [rsa](https://github.com/sybrenstuvel/python-rsa/)
 
 ## Installation
 
